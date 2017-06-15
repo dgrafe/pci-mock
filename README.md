@@ -164,6 +164,7 @@ umount /mnt/image/dev/
 umount /mnt/image
 
 dd if=/dev/zero of=/tmp/iomem.img bs=1M count=1
+chmod a+w /tmp/iomem.img
 ```
 
 ### Running the driver in the UML environment and mapping in a directory from the host
@@ -177,7 +178,7 @@ Run the vmlinux binary you have created befory with the following parameters:
 
 Example:
 ```
-./../kernel/staging/vmlinux umid=test iomem=mock,/tmp/iomem.img ubd0=/tmp/minimal.img hostfs=. init=/bin/bash
+../../kernel/staging/vmlinux umid=test iomem=mock,/tmp/iomem.img ubd0=/tmp/minimal.img hostfs=. init=/bin/bash
 ...
 root@(none):/# mount -t proc proc /proc/
 root@(none):/# mount -t hostfs hostfs /mnt/

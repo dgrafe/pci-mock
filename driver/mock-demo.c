@@ -26,13 +26,15 @@ static struct mock_private {
 
 static void __exit demo_exit(void) {
 
-
-	// disable interrupts before releasing the handler
+	// disable interrupts
 	iowrite16(0x0000, PrivateData.mmio_addr + INTERRUPT_MASK_REGISTER);
+
+#ifndef __arch_um__
 	free_irq(PrivateData.dev->irq, &PrivateData);
 	
 	pci_iounmap(PrivateData.dev, PrivateData.mmio_addr);
 	pci_release_regions(PrivateData.dev);
+#endif
 }
 
 static irqreturn_t int_handler(int irq, void *dev) {
@@ -56,6 +58,7 @@ static irqreturn_t int_handler(int irq, void *dev) {
 	return IRQ_NONE;
 }
 
+//****************** UML specific initialisation ****************
 #ifdef __arch_um__
 static irqreturn_t int_handler_uml(int irq, void *dev) {
 
@@ -72,11 +75,53 @@ static irqreturn_t int_handler_uml(int irq, void *dev) {
 
 	return ret;
 }
-#endif
 
-static int init_pci(void) {
+static int init_device(void) {
+
+	int rc;
+	unsigned long iomem_length;
+	char file[100];
+
+	PrivateData.mmio_addr = (void*)find_iomem("mock", &iomem_length);
+	if (!PrivateData.mmio_addr) {
+		printk(KERN_ERR "UML: Could not map iomem\n");
+		return -ENODEV;
+	} else {
+		printk(KERN_NOTICE "UML: iomem mapped with size %ld\n", iomem_length);
+
+		if (umid_file_name("mock", file, sizeof(file)))
+			return -1;
+
+		PrivateData.sock = os_create_unix_socket(file, sizeof(file), 1);
+		if (PrivateData.sock < 0) {
+			printk(KERN_ERR "Failed to create IRQ trigger\n");
+			return -ENODEV;
+		}
+
+		rc = um_request_irq(TELNETD_IRQ, PrivateData.sock, IRQ_READ, int_handler_uml,
+					IRQF_SHARED, "mock-demo", &PrivateData.sock); 
+		if (0 != rc) {
+
+			printk(KERN_ERR "Failed to set handler on fake IRQ line. Err: %d\n", rc);
+			return -ENODEV;
+		}
+
+	}
+
+	return 0;
+}
+
+#else
+//**************** PCI specific initalisation  ******************
+static int init_device(void) {
 	
 	int rc;
+
+	PrivateData.dev = pci_get_device(0x10ec, 0x8168, NULL);
+	if (!PrivateData.dev) {
+		printk(KERN_ERR "PCI Device not found");
+		return -ENODEV;
+	}
 
 	rc = pci_enable_device(PrivateData.dev);
 	if (rc < 0)
@@ -116,53 +161,16 @@ err_enable:
 	dev_err(&PrivateData.dev->dev, "Error enabling device: %d\n", rc);
 	return rc;
 }
-
+#endif
+//***************************************************************
 
 static int __init demo_init(void) {
 
 	int rc;
-
-#ifdef __arch_um__
-	unsigned long iomem_length;
-	char file[100];
-
-	PrivateData.mmio_addr = (void*)find_iomem("mock", &iomem_length);
-	if (!PrivateData.mmio_addr) {
-		printk(KERN_ERR "UML: Could not map iomem\n");
-		return -ENODEV;
-	} else {
-		printk(KERN_NOTICE "UML: iomem mapped with size %ld\n", iomem_length);
-
-		if (umid_file_name("mock", file, sizeof(file)))
-			return -1;
-
-		PrivateData.sock = os_create_unix_socket(file, sizeof(file), 1);
-		if (PrivateData.sock < 0) {
-			printk(KERN_ERR "Failed to create IRQ trigger\n");
-			return -ENODEV;
-		}
-
-		rc = um_request_irq(TELNETD_IRQ, PrivateData.sock, IRQ_READ, int_handler_uml,
-					IRQF_SHARED, "mock-demo", &PrivateData.sock); 
-		if (0 != rc) {
-
-			printk(KERN_ERR "Failed to set handler on fake IRQ line. Err: %d\n", rc);
-			return -ENODEV;
-		}
-
-	}
-#else
-
-	PrivateData.dev = pci_get_device(0x10ec, 0x8168, NULL);
-	if (!PrivateData.dev) {
-		printk(KERN_ERR "PCI Device not found");
-		return -ENODEV;
-	} 
 	
-	rc = init_pci();
+	rc = init_device();
 	if (0 != rc)
 		return rc;
-#endif
 
 	// enable the link change interrupt after registering the handler
 	iowrite16(LINK_CHANGE_INT_MASK, PrivateData.mmio_addr + INTERRUPT_MASK_REGISTER);
