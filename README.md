@@ -14,8 +14,9 @@ availability of the hardware is an issue. It's just too much for testing only th
 ## Simulating the PCI-Bus communication
 
 The data exchanged over the PCI bus is actually pretty simple. It's just a data stream of reports and commands according to
-defined data model. There is an ICD fro that. So the idea is basically that we are simulating this communication by replacing
-the PCI devices with mocks in our test environment.
+defined data model. There is an ICD fro that. So we basically want to simulate this communication by replacing
+the PCI devices with mocks in our test environment. The software stack will hopefully not even notice the simulation
+if we can emulate the PCI bus communication at the kernel interfaces to the bus.
 
 ### Mocking the FPGA register map
 
